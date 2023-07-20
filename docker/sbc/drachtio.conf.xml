@@ -1,0 +1,29 @@
+<drachtio>
+
+    <!-- udp port to listen on for client connections and shared secret used to authenticate clients -->
+    <admin port="9022" secret="cymru">0.0.0.0</admin>
+    <request-handlers>
+    <!--
+	    <request-handler sip-method="INVITE">http://172.16.3.72:4000</request-handler>
+        -->
+        <request-handler sip-method="INVITE">http://mylocal.kore.ai:4000</request-handler>
+    </request-handlers>
+    <sip>
+        <contacts>
+        </contacts>
+        <tls>
+            <key-file>/etc/example-keypair.pem</key-file>
+            <cert-file>/etc/example-cert.pem</cert-file>
+        </tls>
+
+      <udp-mtu>4096</udp-mtu>
+
+    </sip>
+    <cdrs>false</cdrs>
+
+    <logging>
+        <sofia-loglevel>9</sofia-loglevel>
+        <loglevel>debug</loglevel>
+    </logging>
+
+</drachtio>

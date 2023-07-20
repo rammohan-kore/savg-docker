@@ -1,0 +1,293 @@
+version: "3.3"
+networks:
+  jambonz:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.10.0.0/16
+services:
+  mysql:
+    build: ./mysql
+    volumes:
+      - ./data_volume:/var/lib/mysql
+    ports:
+      - "3360:3306"
+    environment: 
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: "jambones"
+      MYSQL_USER: "jambones"
+      MYSQL_PASSWORD: "jambones"
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "127.0.0.1", "--protocol", "tcp"]
+      timeout: 5s
+      retries: 10    
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.2
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "16379:6379/tcp"
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.3
+
+  drachtio-sbc:
+    image: drachtio/drachtio-server:0.8.2
+    restart: always
+    environment:
+      JAMBONES_LOGLEVEL: debug
+    command: drachtio --contact sip:172.10.0.10;transport=udp --external-ip 172.10.0.10 --contact sip:172.10.0.10:8090;transport=ws --external-ip 172.10.0.10  --contact sips:172.10.0.10:8093;transport=wss --external-ip 172.10.0.10 --contact sip:172.10.0.10;transport=tcp --address 0.0.0.0 --port 9022
+    volumes:
+      - ./sbc/drachtio.conf.xml:/etc/drachtio.conf.xml
+      - ./sbc/example-cert.pem:/etc/example-cert.pem
+      - ./sbc/example-keypair.pem:/etc/example-keypair.pem
+      - ./sbc/hosts:/etc/hosts
+    ports:
+      - "5060:5060/udp"
+      - 8090:8090/tcp
+    depends_on:
+      - rtpengine
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.10
+
+  rtpengine:
+    image: drachtio/rtpengine:jambonz-test
+    restart: always
+    command: rtpengine --interface private/172.10.0.11 --interface public/172.10.0.11!${HOST_IP} --log-level 2
+    ports:
+      - "40000-40100:40000-40100/udp"
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.11
+
+# JWT_SECRET=G=u%-97#TffYf ENCRYPTION_SECRET=G=u%-97#TffYf JAMBONES_MYSQL_HOST=172.10.0.2 JAMBONES_MYSQL_USER=jambones JAMBONES_MYSQL_PASSWORD=jambones JAMBONES_MYSQL_DATABASE=jambones JAMBONES_REDIS_HOST=172.10.0.3 JAMBONES_REDIS_PORT=6379 JAMBONES_LOGLEVEL=debug JAMBONE_API_VERSION=v1 JAMBONES_CLUSTER_ID=jb ENABLE_METRICS=0 HTTP_PORT=3012 JAMBONES_TIME_SERIES_HOST=172.10.0.61 node app.js
+
+  api-server:
+    image: jambonz/api-server:0.8.4
+    restart: always
+    ports:
+      - "3012:3012"
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: 'G=u%-97#TffYf'
+      JAMBONES_MYSQL_HOST: 172.10.0.2
+      JAMBONES_MYSQL_USER: jambones 
+      JAMBONES_MYSQL_PASSWORD: jambones 
+      JAMBONES_MYSQL_DATABASE: jambones 
+      JAMBONES_REDIS_HOST: 172.10.0.3
+      JAMBONES_REDIS_PORT: 6379
+      JAMBONES_LOGLEVEL: debug
+      JAMBONE_API_VERSION: v1 
+      JAMBONES_CLUSTER_ID: jb 
+      ENABLE_METRICS: 0
+      HTTP_PORT: 3012
+      JAMBONES_TIME_SERIES_HOST: 172.10.0.61
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.30
+    
+  webapp:
+    build: ./jambonz-webapp
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.31
+    ports:
+      - "3010:3001"
+    environment:
+      API_BASE_URL: http://${HOST_IP}:3012/v1
+    depends_on:
+      - api-server
+    volumes:
+      - ./sbc/hosts:/etc/hosts
+
+  registrar:
+    image: jambonz/sbc-registrar:latest
+    restart: always
+    environment:
+      NODE_ENV: production
+      DRACHTIO_HOST: 172.10.0.10
+      DRACHTIO_PORT: 9022
+      DRACHTIO_SECRET: cymru
+      JAMBONES_MYSQL_HOST: 172.10.0.2
+      JAMBONES_MYSQL_USER: jambones 
+      JAMBONES_MYSQL_PASSWORD: jambones 
+      JAMBONES_MYSQL_DATABASE: jambones 
+      JAMBONES_REDIS_HOST: 172.10.0.3
+      JAMBONES_REDIS_PORT: 6379
+      JAMBONES_LOGLEVEL: debug
+      ENABLE_METRICS: 0
+      JAMBONES_TIME_SERIES_HOST: 172.10.0.61
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.32
+    volumes:
+      - ./sbc/hosts:/etc/hosts
+  
+  call-router:
+    image: jambonz/sbc-call-router:0.8.2
+    restart: always
+    environment:
+      NODE_ENV: production
+      DOCKER_BRIDGE_IP: 172.10.0.1
+      JAMBONES_LOGLEVEL: debug
+      JAMBONES_NETWORK_CIDR: 172.10.0.0/16
+      HTTP_PORT: 4000
+      JAMBONES_INBOUND_ROUTE: 127.0.0.1:4002
+      JAMBONES_OUTBOUND_ROUTE: 127.0.0.1:4003
+      JAMBONZ_TAGGED_INBOUND: 1
+      ENABLE_METRICS: 0
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.33
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./sbc/hosts:/etc/hosts
+
+  sbc-inbound:
+    image: jambonz/sbc-inbound:0.8.2
+    restart: always
+    environment:
+      NODE_ENV: production
+      DRACHTIO_HOST: 172.10.0.10
+      DRACHTIO_PORT: 9022
+      DRACHTIO_SECRET: cymru
+      JAMBONES_RTPENGINES: '172.10.0.11:22222'
+      JAMBONES_MYSQL_HOST: 172.10.0.2
+      JAMBONES_MYSQL_USER: jambones 
+      JAMBONES_MYSQL_PASSWORD: jambones 
+      JAMBONES_MYSQL_DATABASE: jambones 
+      JAMBONES_REDIS_HOST: 172.10.0.3
+      JAMBONES_REDIS_PORT: 6379
+      JAMBONES_CLUSTER_ID: jb 
+      JAMBONES_LOGLEVEL: debug
+      ENABLE_METRICS: 0
+      JAMBONES_NETWORK_CIDR: 172.10.0.0/16
+      JAMBONES_TIME_SERIES_HOST: 172.10.0.61
+      JAMBONES_FEATURE_SERVERS: 172.10.0.50:5070:cymru
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.34
+    volumes:
+      - ./sbc/hosts:/etc/hosts
+
+  sbc-outbound:
+    image: jambonz/sbc-outbound:0.8.2
+    restart: always
+    environment:
+      NODE_ENV: production
+      DRACHTIO_HOST: 172.10.0.10
+      DRACHTIO_PORT: 9022
+      DRACHTIO_SECRET: cymru
+      JAMBONES_RTPENGINES: '172.10.0.11:22222'
+      JAMBONES_MYSQL_HOST: 172.10.0.2
+      JAMBONES_MYSQL_USER: jambones 
+      JAMBONES_MYSQL_PASSWORD: jambones 
+      JAMBONES_MYSQL_DATABASE: jambones 
+      JAMBONES_REDIS_HOST: 172.10.0.3
+      JAMBONES_REDIS_PORT: 6379
+      JAMBONES_CLUSTER_ID: jb 
+      JAMBONES_LOGLEVEL: debug
+      ENABLE_METRICS: 0
+      JAMBONES_NETWORK_CIDR: 172.10.0.0/16
+      JAMBONES_TIME_SERIES_HOST: 172.10.0.61
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.35
+    volumes:
+      - ./sbc/hosts:/etc/hosts
+
+  drachtio-fs:
+    image: drachtio/drachtio-server:0.8.2
+    restart: always
+    command: drachtio --contact sip:172.10.0.50:5070;transport=udp,tcp --address 0.0.0.0 --port 9022
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.50
+    ports:
+    - "5070:5070"
+
+  freeswitch:
+    image: drachtio/drachtio-freeswitch-mrf:0.4.27
+    restart: always
+    command: freeswitch --rtp-range-start 20000 --rtp-range-end 20100
+    ports:
+      - "8022:8021/tcp"
+    volumes:
+      - ./tmpAudio:/tmp
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.51
+
+  feature-server:
+    image: jambonz/feature-server:0.8.4
+    restart: always
+    volumes:
+      - ./credentials:/opt/credentials
+      - ./tmpAudio:/tmp
+      - ./sbc/hosts:/etc/hosts
+    environment:
+      NODE_ENV: production
+      GOOGLE_APPLICATION_CREDENTIALS: /opt/credentials/gcp.json
+      DRACHTIO_HOST: 172.10.0.50
+      DRACHTIO_PORT: 9022
+      DRACHTIO_SECRET: cymru
+      JAMBONES_MYSQL_HOST: 172.10.0.2
+      JAMBONES_MYSQL_USER: jambones 
+      JAMBONES_MYSQL_PASSWORD: jambones 
+      JAMBONES_MYSQL_DATABASE: jambones 
+      JAMBONES_REDIS_HOST: 172.10.0.3
+      JAMBONES_REDIS_PORT: 6379
+      JAMBONES_LOGLEVEL: debug
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      ENABLE_METRICS: 0
+      ENCRYPTION_SECRET: 'G=u%-97#TffYf'
+      JAMBONES_NETWORK_CIDR: 172.10.0.0/16
+      HTTP_PORT: 3012
+      JAMBONES_SBCS: 172.10.0.10
+      JAMBONES_FEATURE_SERVERS: 172.10.0.50:5070:cymru
+      JAMBONES_FREESWITCH: 172.10.0.51:8021:JambonzR0ck$$
+      JAMBONES_TIME_SERIES_HOST: 172.10.0.61
+      
+    depends_on:
+      - mysql
+      - redis
+      - sbc-inbound
+      - sbc-outbound
+      - api-server
+      - drachtio-fs
+      - freeswitch
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.60
+    
+
+  influxdb:
+    image: influxdb:1.8
+    ports:
+      - "8086:8086"
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.61
+
+
