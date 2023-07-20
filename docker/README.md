@@ -68,9 +68,50 @@ SADD jb:fs-service-url "http://172.10.0.60:3013"
 
 Installing another freeswitch instance to use it as a SIP infrastructure for end customers
 docker run -it --name freeswitchpbx --net=host  -v /home/pocs:/pocs debian:bullseye
+In the /home/pocs folder create a bash script install-freeswitch.sh with content below
+#!/bin/sh
+TOKEN=pat_cb6LCRmVoq7N5BynA22Yc7gr
+apt-get update && apt-get install -y gnupg2 wget lsb-release
+
+wget --http-user=signalwire --http-password=$TOKEN -O /usr/share/keyrings/signalwire-freeswitch-repo.gpg https://freeswitch.signalwire.com/repo/deb/debian-release/signalwire-freeswitch-repo.gpg
+
+echo "machine freeswitch.signalwire.com login signalwire password $TOKEN" > /etc/apt/auth.conf
+chmod 600 /etc/apt/auth.conf
+echo "deb [signed-by=/usr/share/keyrings/signalwire-freeswitch-repo.gpg] https://freeswitch.signalwire.com/repo/deb/debian-release/ `lsb_release -sc` main" > /etc/apt/sources.list.d/freeswitch.list
+echo "deb-src [signed-by=/usr/share/keyrings/signalwire-freeswitch-repo.gpg] https://freeswitch.signalwire.com/repo/deb/debian-release/ `lsb_release -sc` main" >> /etc/apt/sources.list.d/freeswitch.list
+
+# you may want to populate /etc/freeswitch at this point.
+# if /etc/freeswitch does not exist, the standard vanilla configuration is deployed
+apt-get update && apt-get install -y freeswitch-meta-all
+
+
+# end-of install-freeswith.sh
+
+Run the above script this will take sometime and install a new freeswith instance
+
+
 
 Steps to allow savg to be trunked
 docker exec -it freeswitchpbx bash
+
+you can use fs_cli application to issue freeswitch command
+
+- to see the status of sofia sip use "sofia status" command
+- to see the status of the internal profile use "sofia status profile internal", this command will provide information regarding websocket address, sip address etc. WS-BIND-URL, 
+
+
+if call is getting disconnected after 32 seconds
+in freeswitch change the below configuration in /etc/freeswitch/sip_profiles/internal.xml
+
+<!-- param name="ext-rtp-ip" value="$${external_rtp_ip}"/ -->
+<param name="ext-rtp-ip" value="<<place external ip here>>"/>
+<!-- param name="ext-sip-ip" value="$${external_rtp_ip}"/ -->
+<param name="ext-sip-ip" value="<<place external ip>>"/>
+
+freeswitch uses 8081 port in /etc/freeswitch/autoload_configs/verto.conf.xml as koreserver also uses 8082 change it to 8084
+freeswitch uses 5080 port in /etc/freeswitch/vars.xml as koreserver also uses 5080 change it to 5092, 5083
+
+
 vi /etc/freeswitch/autoload_configs/acl.conf.xml
 Under list tag name="domains" add the below line
 <node type="allow" cidr="172.10.0.0/16">
