@@ -63,7 +63,7 @@ After all the docker instances are up & running do the following:
 login to redis using redis-cli -h 172.10.0.3
 flushall
 SADD jb:active-fs "172.10.0.50:5070"
-SADD jb:fs-service-url "http://172.10.0.60:3013"
+SADD jb:fs-service-url "http://172.10.0.60:3012"
 
 
 Installing another freeswitch instance to use it as a SIP infrastructure for end customers
@@ -99,6 +99,8 @@ you can use fs_cli application to issue freeswitch command
 - to see the status of sofia sip use "sofia status" command
 - to see the status of the internal profile use "sofia status profile internal", this command will provide information regarding websocket address, sip address etc. WS-BIND-URL, 
 
+vi /etc/freeswitch/vars.xml
+change 5060 to 5090 5061 to 5091
 
 if call is getting disconnected after 32 seconds
 in freeswitch change the below configuration in /etc/freeswitch/sip_profiles/internal.xml
@@ -108,19 +110,19 @@ in freeswitch change the below configuration in /etc/freeswitch/sip_profiles/int
 <!-- param name="ext-sip-ip" value="$${external_rtp_ip}"/ -->
 <param name="ext-sip-ip" value="<<place external ip>>"/>
 
-freeswitch uses 8081 port in /etc/freeswitch/autoload_configs/verto.conf.xml as koreserver also uses 8082 change it to 8084
+freeswitch uses 8081 port in /etc/freeswitch/autoload_configs/verto.conf.xml as koreserver also uses 8081 change it to 8084
 freeswitch uses 5080 port in /etc/freeswitch/vars.xml as koreserver also uses 5080 change it to 5092, 5083
 
 
 vi /etc/freeswitch/autoload_configs/acl.conf.xml
 Under list tag name="domains" add the below line
-<node type="allow" cidr="172.10.0.0/16">
+<node type="allow" cidr="172.10.0.0/16"/>
 
 Steps to create a new gateway for trunking to save from freeswitch
 Under /etc/freeswitch/sip_profiles create a folder with name gateways
 Create a file smartassist.xml with the below content:
 <gateway name="local.kore.ai">
-	<param name="proxy" value="mylocal.kore.ai"/>
+	<param name="proxy" value="<ip address of the machine>"/>
 	<param name="realm" value="local.kore.ai"/>
 	<param name="register" value="false"/>
 	<param name="context" value="smartassist"/>
@@ -135,7 +137,10 @@ Under /etc/freeswitch/dialplan/default.xml add the below block
             <action application="bridge" data="sofia/gateway/local.kore.ai/10001"/>
       </condition>
 </extension>
-
+In /etc/freeswitch/profiles/sip_profiles/internal.xml add the below XML
+<gateways>
+    <X-PRE-PROCESS cmd="include" data="gateways/*.xml"/>
+</gateways>
 
 Under /etc/freeswitch/directory/default folder create a file 10001.xml and add the below contents
 <include>
