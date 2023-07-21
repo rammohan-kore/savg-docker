@@ -274,6 +274,7 @@ services:
       - redis
       - sbc-inbound
       - sbc-outbound
+      - sbc-options-handler
       - api-server
       - drachtio-fs
       - freeswitch
@@ -289,5 +290,35 @@ services:
     networks:
       jambonz:
         ipv4_address: 172.10.0.61
+
+  sbc-options-handler:
+    image: jambonz/sbc-options-handler:latest
+    restart: always
+    environment:
+      NODE_ENV: production
+      DRACHTIO_HOST: 172.10.0.10
+      DRACHTIO_PORT: 9022
+      DRACHTIO_SECRET: cymru
+      JAMBONES_RTPENGINES: '172.10.0.11:22222'
+      JAMBONES_MYSQL_HOST: 172.10.0.2
+      JAMBONES_MYSQL_USER: jambones 
+      JAMBONES_MYSQL_PASSWORD: jambones 
+      JAMBONES_MYSQL_DATABASE: jambones 
+      JAMBONES_REDIS_HOST: 172.10.0.3
+      JAMBONES_REDIS_PORT: 6379
+      JAMBONES_CLUSTER_ID: jb 
+      JAMBONES_LOGLEVEL: debug
+      ENABLE_METRICS: 0
+      JAMBONES_NETWORK_CIDR: 172.10.0.0/16
+      JAMBONES_TIME_SERIES_HOST: 172.10.0.61
+      JAMBONES_FEATURE_SERVERS: 172.10.0.50:5070:cymru
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      jambonz:
+        ipv4_address: 172.10.0.36
+    volumes:
+      - ./sbc/hosts:/etc/hosts
 
 
